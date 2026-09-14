@@ -37,7 +37,11 @@ func connectorLabels() map[string]string {
 // CloudflaredConfig carries the fully resolved settings for the managed
 // cloudflared connector deployment, configuration parsing stays in main.
 type CloudflaredConfig struct {
-	Image           string
+	Image string
+	// Overrides Image with the image it resolves.
+	// Nil runs Image as configured. When set, Image only serves a fresh
+	// install until the resolver knows an image.
+	ImageResolver   ImageResolver
 	ImagePullPolicy string
 	Replicas        int32
 	Protocol        string
@@ -164,6 +168,10 @@ func CreateOrUpdateControlledCloudflared(
 		return errors.Wrapf(err, "list controlled-cloudflared-connector in namespace %s", namespace)
 	}
 
+	if config.ImageResolver != nil {
+		config.Image = resolveConnectorImage(ctx, config, list.Items)
+	}
+
 	if len(list.Items) > 0 {
 		existingDeployment := &list.Items[0]
 
@@ -213,7 +221,7 @@ func CreateOrUpdateControlledCloudflared(
 			if err != nil {
 				return errors.Wrap(err, "update controlled-cloudflared-connector deployment")
 			}
-			logger.Info("Updated controlled-cloudflared-connector deployment", "namespace", namespace)
+			logger.Info("Updated controlled-cloudflared-connector deployment", "namespace", namespace, "image", config.Image)
 		}
 
 		return nil
@@ -228,8 +236,27 @@ func CreateOrUpdateControlledCloudflared(
 	if err != nil {
 		return errors.Wrap(err, "create controlled-cloudflared-connector deployment")
 	}
-	logger.Info("Created controlled-cloudflared-connector deployment", "namespace", namespace)
+	logger.Info("Created controlled-cloudflared-connector deployment", "namespace", namespace, "image", config.Image)
 	return nil
+}
+
+// Picks the image for the connector Deployment.
+//
+// It prefers the image of [CloudflaredConfig.ImageResolver]. While none is
+// known it keeps the running connector image, so a controller restart during
+// a registry outage does not roll the connector back to the configured image.
+func resolveConnectorImage(ctx context.Context, config CloudflaredConfig, existing []appsv1.Deployment) string {
+	resolved, err := config.ImageResolver.Image(ctx)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "resolve cloudflared image", "current", resolved)
+	}
+	if resolved != "" {
+		return resolved
+	}
+	if len(existing) > 0 && len(existing[0].Spec.Template.Spec.Containers) > 0 {
+		return existing[0].Spec.Template.Spec.Containers[0].Image
+	}
+	return config.Image
 }
 
 func createOrUpdateTunnelTokenSecret(

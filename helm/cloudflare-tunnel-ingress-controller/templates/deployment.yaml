@@ -90,6 +90,10 @@ spec:
                   fieldPath: metadata.namespace
             - name: CLOUDFLARED_IMAGE
               value: "{{ .Values.cloudflared.image.repository }}:{{ .Values.cloudflared.image.tag }}"
+            {{- if .Values.cloudflared.image.useLatest.enabled }}
+            - name: CLOUDFLARED_IMAGE_CHECK_FREQUENCY
+              value: {{ .Values.cloudflared.image.useLatest.checkFrequency | quote }}
+            {{- end }}
             - name: CLOUDFLARED_IMAGE_PULL_POLICY
               value: {{ .Values.cloudflared.image.pullPolicy | quote }}
             - name: CLOUDFLARED_REPLICA_COUNT

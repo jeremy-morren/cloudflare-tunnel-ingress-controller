@@ -34,6 +34,16 @@ func (m *MockTunnelClient) FetchTunnelToken(ctx context.Context) (string, error)
 	return m.FetchTunnelTokenFunc(ctx)
 }
 
+// Returns a fixed image and error, standing in for a registry lookup.
+type fakeImageResolver struct {
+	image string
+	err   error
+}
+
+func (f *fakeImageResolver) Image(ctx context.Context) (string, error) {
+	return f.image, f.err
+}
+
 var _ = Describe("CreateOrUpdateControlledCloudflared", func() {
 	const testNamespace = "cloudflared-test"
 
@@ -166,6 +176,54 @@ var _ = Describe("CreateOrUpdateControlledCloudflared", func() {
 
 		Expect(*deployment.Spec.Replicas).To(Equal(int32(3)))
 		Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("cloudflare/cloudflared:2022.3.0"))
+	})
+
+	It("should run the resolved image and keep the running one while none is known", func() {
+		// Prepare
+		namespaceFixtures := fixtures.NewKubernetesNamespaceFixtures(testNamespace, kubeClient)
+		ns, err := namespaceFixtures.Start(ctx)
+		Expect(err).NotTo(HaveOccurred())
+
+		defer func() {
+			err := namespaceFixtures.Stop(ctx)
+			Expect(err).NotTo(HaveOccurred())
+		}()
+
+		mockTunnelClient := &MockTunnelClient{
+			FetchTunnelTokenFunc: func(ctx context.Context) (string, error) {
+				return "mock-token", nil
+			},
+		}
+		resolver := &fakeImageResolver{err: errors.New("registry unavailable")}
+		config := baseConfig()
+		config.ImageResolver = resolver
+
+		runningImage := func() string {
+			deployment := &appsv1.Deployment{}
+			err := kubeClient.Get(ctx, types.NamespacedName{
+				Namespace: ns,
+				Name:      "controlled-cloudflared-connector",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+			return deployment.Spec.Template.Spec.Containers[0].Image
+		}
+
+		// a fresh install falls back to the configured image
+		err = controller.CreateOrUpdateControlledCloudflared(ctx, kubeClient, mockTunnelClient, ns, config)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(runningImage()).To(Equal("cloudflare/cloudflared:latest"))
+
+		// a resolved image replaces it
+		resolver.image, resolver.err = "cloudflare/cloudflared:2026.9.1", nil
+		err = controller.CreateOrUpdateControlledCloudflared(ctx, kubeClient, mockTunnelClient, ns, config)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(runningImage()).To(Equal("cloudflare/cloudflared:2026.9.1"))
+
+		// a restarted controller that cannot reach the registry keeps it
+		resolver.image, resolver.err = "", errors.New("registry unavailable")
+		err = controller.CreateOrUpdateControlledCloudflared(ctx, kubeClient, mockTunnelClient, ns, config)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(runningImage()).To(Equal("cloudflare/cloudflared:2026.9.1"))
 	})
 
 	It("should apply and remove pod template customization on an existing deployment", func() {

@@ -127,6 +127,17 @@ cloudflared:
     repository: ghcr.io/strrl/cloudflared
     pullPolicy: IfNotPresent
     tag: 2026.7.3-host-metrics.1
+    # Run the newest tag of the repository laid out like tag. Every
+    # checkFrequency the controller lists the repository's tags and rolls the
+    # connector onto the newest one. tag is the floor, the connector never runs
+    # anything older. A tag without version, such as latest, is tracked by
+    # digest instead, rolling the connector whenever the tag moves.
+    # See https://tunnel.strrl.dev/reference/helm-values/#tracking-the-latest-cloudflared-image 
+    # for the tag comparison rules.
+    useLatest:
+      enabled: false
+      # ISO 8601 duration, for example PT30M or PT1H (note the T before hours).
+      checkFrequency: PT1H
   replicaCount: 1
   protocol: auto
   # Convenience switch that renders a required pod anti-affinity on

@@ -34,42 +34,77 @@ These values apply to the controller Deployment, not the managed cloudflared con
 
 The chart writes these values to the deployment customization file consumed by the controller.
 
-| Value                                   | Default                         | Notes                                                                                                                                                                               |
-| --------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cloudflared.image.repository`          | `ghcr.io/strrl/cloudflared`      | Image repository for managed cloudflared connector pods.                                                                                                                            |
-| `cloudflared.image.tag`                 | `2026.7.3-host-metrics.1`        | Image tag for managed cloudflared connector pods.                                                                                                                                   |
-| `cloudflared.replicaCount`              | `1`                             | Number of cloudflared connector pods maintaining the tunnel.                                                                                                                        |
-| `cloudflared.extraArgs`                 | `[]`                            | Extra arguments passed to cloudflared, such as `--post-quantum`.                                                                                                                    |
-| `cloudflared.resources`                 | `{}`                            | Container resource requests and limits.                                                                                                                                             |
-| `cloudflared.securityContext`           | `{}`                            | Kubernetes container security context for the cloudflared container.                                                                                                                |
-| `cloudflared.podSecurityContext`        | `{}`                            | Kubernetes pod security context for connector pods.                                                                                                                                 |
-| `cloudflared.podAntiAffinity`           | `false`                         | Adds required pod anti-affinity across `kubernetes.io/hostname`. Ignored when `cloudflared.affinity` is set. Extra replicas stay pending if there are not enough schedulable nodes. |
-| `cloudflared.topologySpreadConstraints` | `[]`                            | Kubernetes topology spread constraints for connector pods.                                                                                                                          |
-| `cloudflared.priorityClassName`         | unset                           | PriorityClass assigned to connector pods.                                                                                                                                           |
-| `cloudflared.probes.liveness`           | `{}`                            | Kubernetes liveness probe for the cloudflared container.                                                                                                                            |
-| `cloudflared.probes.readiness`          | `{}`                            | Kubernetes readiness probe for the cloudflared container.                                                                                                                           |
-| `cloudflared.probes.startup`            | `{}`                            | Kubernetes startup probe for the cloudflared container.                                                                                                                             |
-| `cloudflared.volumes`                   | `[]`                            | Kubernetes volumes added to connector pods.                                                                                                                                         |
-| `cloudflared.volumeMounts`              | `[]`                            | Kubernetes volume mounts added to the cloudflared container.                                                                                                                        |
-| `cloudflared.pdb.enabled`               | `false`                         | Create a PodDisruptionBudget for connector pods.                                                                                                                                    |
-| `cloudflared.pdb.minAvailable`          | unset                           | Minimum available connector pods. Mutually exclusive with `cloudflared.pdb.maxUnavailable`.                                                                                         |
-| `cloudflared.pdb.maxUnavailable`        | unset                           | Maximum unavailable connector pods. Mutually exclusive with `cloudflared.pdb.minAvailable`.                                                                                         |
-
+| Value                                        | Default                     | Notes                                                                                                                                                                               |
+| -------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cloudflared.image.repository`               | `ghcr.io/strrl/cloudflared` | Image repository for managed cloudflared connector pods.                                                                                                                            |
+| `cloudflared.image.tag`                      | `2026.7.3-host-metrics.1`   | Image tag for managed cloudflared connector pods.                                                                                                                                   |
+| `cloudflared.image.useLatest.enabled`        | `false`                     | Run the newest tag of `cloudflared.image.repository` laid out like `cloudflared.image.tag`. See [Tracking the latest cloudflared](#tracking-the-latest-cloudflared).                |
+| `cloudflared.image.useLatest.checkFrequency` | `PT1H`                      | ISO 8601 duration between checks for a newer tag, for example `PT30M` or `PT1H`.                                                                                                    |
+| `cloudflared.replicaCount`                   | `1`                         | Number of cloudflared connector pods maintaining the tunnel.                                                                                                                        |
+| `cloudflared.extraArgs`                      | `[]`                        | Extra arguments passed to cloudflared, such as `--post-quantum`.                                                                                                                    |
+| `cloudflared.resources`                      | `{}`                        | Container resource requests and limits.                                                                                                                                             |
+| `cloudflared.securityContext`                | `{}`                        | Kubernetes container security context for the cloudflared container.                                                                                                                |
+| `cloudflared.podSecurityContext`             | `{}`                        | Kubernetes pod security context for connector pods.                                                                                                                                 |
+| `cloudflared.podAntiAffinity`                | `false`                     | Adds required pod anti-affinity across `kubernetes.io/hostname`. Ignored when `cloudflared.affinity` is set. Extra replicas stay pending if there are not enough schedulable nodes. |
+| `cloudflared.topologySpreadConstraints`      | `[]`                        | Kubernetes topology spread constraints for connector pods.                                                                                                                          |
+| `cloudflared.priorityClassName`              | unset                       | PriorityClass assigned to connector pods.                                                                                                                                           |
+| `cloudflared.probes.liveness`                | `{}`                        | Kubernetes liveness probe for the cloudflared container.                                                                                                                            |
+| `cloudflared.probes.readiness`               | `{}`                        | Kubernetes readiness probe for the cloudflared container.                                                                                                                           |
+| `cloudflared.probes.startup`                 | `{}`                        | Kubernetes startup probe for the cloudflared container.                                                                                                                             |
+| `cloudflared.volumes`                        | `[]`                        | Kubernetes volumes added to connector pods.                                                                                                                                         |
+| `cloudflared.volumeMounts`                   | `[]`                        | Kubernetes volume mounts added to the cloudflared container.                                                                                                                        |
+| `cloudflared.pdb.enabled`                    | `false`                     | Create a PodDisruptionBudget for connector pods.                                                                                                                                    |
+| `cloudflared.pdb.minAvailable`               | unset                       | Minimum available connector pods. Mutually exclusive with `cloudflared.pdb.maxUnavailable`.                                                                                         |
+| `cloudflared.pdb.maxUnavailable`             | unset                       | Maximum unavailable connector pods. Mutually exclusive with `cloudflared.pdb.minAvailable`.                                                                                         |
 ## ServiceMonitor
 
 These values configure the Prometheus Operator `ServiceMonitor` objects. One switch creates ServiceMonitors for both metrics endpoints: the controller and the managed cloudflared connectors.
 
-| Value                              | Default | Notes                                                                                      |
-| ---------------------------------- | ------- | ------------------------------------------------------------------------------------------ |
-| `serviceMonitor.create`            | `false` | Create both ServiceMonitors. Requires the Prometheus Operator CRDs.                        |
-| `serviceMonitor.labels`            | `{}`    | Additional labels added to both ServiceMonitors.                                           |
-| `serviceMonitor.interval`          | `""`    | Scrape interval. Omitted from the endpoints when empty.                                    |
-| `serviceMonitor.scrapeTimeout`     | `""`    | Scrape timeout. Omitted from the endpoints when empty.                                     |
-| `serviceMonitor.metricRelabelings` | `[]`    | Metric relabeling rules applied after scraping.                                            |
-| `serviceMonitor.relabelings`       | `[]`    | Target relabeling rules applied before scraping.                                           |
-| `serviceMonitor.cloudflared.jobLabel` | `""` | Service label used as the Prometheus job name for the connector target. Omitted when empty. |
-| `serviceMonitor.cloudflared.honorLabels` | `false` | Preserve labels from scraped connector metrics when they conflict with server-side labels. |
-| `serviceMonitor.cloudflared.scheme` | `http` | Scheme used to scrape the connector metrics endpoint.                                      |
+| Value                                    | Default | Notes                                                                                       |
+| ---------------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
+| `serviceMonitor.create`                  | `false` | Create both ServiceMonitors. Requires the Prometheus Operator CRDs.                         |
+| `serviceMonitor.labels`                  | `{}`    | Additional labels added to both ServiceMonitors.                                            |
+| `serviceMonitor.interval`                | `""`    | Scrape interval. Omitted from the endpoints when empty.                                     |
+| `serviceMonitor.scrapeTimeout`           | `""`    | Scrape timeout. Omitted from the endpoints when empty.                                      |
+| `serviceMonitor.metricRelabelings`       | `[]`    | Metric relabeling rules applied after scraping.                                             |
+| `serviceMonitor.relabelings`             | `[]`    | Target relabeling rules applied before scraping.                                            |
+| `serviceMonitor.cloudflared.jobLabel`    | `""`    | Service label used as the Prometheus job name for the connector target. Omitted when empty. |
+| `serviceMonitor.cloudflared.honorLabels` | `false` | Preserve labels from scraped connector metrics when they conflict with server-side labels.  |
+| `serviceMonitor.cloudflared.scheme`      | `http`  | Scheme used to scrape the connector metrics endpoint.                                       |
+
+### Tracking the latest cloudflared image
+
+With `cloudflared.image.useLatest.enabled`, the controller lists the tags of `cloudflared.image.repository` every `checkFrequency` and rolls the connector onto the newest tag laid out like `cloudflared.image.tag`. Connector pods only restart when a newer tag appears.
+
+```yaml
+cloudflared:
+  image:
+    useLatest:
+      enabled: true
+      checkFrequency: PT1H
+```
+
+Tags are split on `-` and compared segment by segment: segments that parse as a version compare as versions, the others lexically. Only tags with the same number of segments, and versions in the same positions, as `cloudflared.image.tag` are candidates:
+
+| `cloudflared.image.tag`   | Follows                   | Ignores                                    |
+| ------------------------- | ------------------------- | ------------------------------------------ |
+| `2026.7.3-host-metrics.1` | `2026.9.1-host-metrics.2` | `2026.9.1`, `sha-b1c11e95`                 |
+| `2026.7.3`                | `2026.9.1`                | `2026.9.1-arm64`, `1934-f11dea9`, `latest` |
+
+A tag without any version segment, such as `latest`, is a moving target instead. The controller resolves it to the digest it points at every `checkFrequency`, runs the connector as `<repository>:latest@<digest>`, and rolls it whenever `latest` moves:
+
+```yaml
+cloudflared:
+  image:
+    repository: docker.io/cloudflare/cloudflared
+    tag: latest
+    useLatest:
+      enabled: true
+```
+
+- `cloudflared.image.tag` is the floor: the connector never runs an older tag.
+- The controller needs outbound HTTPS access to the registry. Only registries that allow anonymous pulls are supported.
+- If the registry cannot be reached, the connector keeps running its current image and the controller retries within five minutes.
 
 ## Uninstall behaviour
 

@@ -13,6 +13,7 @@ import (
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
+	"github.com/sosodev/duration"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	corev1 "k8s.io/api/core/v1"
@@ -41,7 +42,10 @@ type rootCmdFlags struct {
 	cloudflaredExtraArgs       []string
 	cloudflaredImage           string
 	cloudflaredImagePullPolicy string
-	cloudflaredReplicaCount    int32
+	// ISO 8601 duration at which the registry is checked for a newer
+	// cloudflared image tag.
+	cloudflaredImageCheckFrequency string
+	cloudflaredReplicaCount        int32
 	// path to the JSON file with cloudflared pod template customization
 	cloudflaredDeploymentConfig string
 	clusterDomain               string
@@ -90,6 +94,7 @@ func main() {
 			options.cloudflaredExtraArgs = viper.GetStringSlice("cloudflared-extra-args")
 			options.cloudflaredImage = viper.GetString("cloudflared-image")
 			options.cloudflaredImagePullPolicy = viper.GetString("cloudflared-image-pull-policy")
+			options.cloudflaredImageCheckFrequency = viper.GetString("cloudflared-image-check-frequency")
 			options.cloudflaredReplicaCount = viper.GetInt32("cloudflared-replica-count")
 			options.cloudflaredDeploymentConfig = viper.GetString("cloudflared-deployment-config")
 			options.clusterDomain = viper.GetString("cluster-domain")
@@ -177,6 +182,20 @@ func main() {
 				os.Exit(1)
 			}
 
+			var imageResolver controller.ImageResolver
+			if options.cloudflaredImageCheckFrequency != "" {
+				checkFrequency, parseErr := duration.Parse(options.cloudflaredImageCheckFrequency)
+				if parseErr != nil {
+					logger.Error(parseErr, "parse cloudflared image check frequency, expected an ISO 8601 duration such as PT1H", "value", options.cloudflaredImageCheckFrequency)
+					os.Exit(1)
+				}
+				imageResolver, err = controller.NewLatestTagResolver(options.cloudflaredImage, checkFrequency.ToTimeDuration())
+				if err != nil {
+					logger.Error(err, "configure cloudflared image refresh")
+					os.Exit(1)
+				}
+			}
+
 			done := make(chan struct{})
 			defer close(done)
 
@@ -196,6 +215,7 @@ func main() {
 
 				reconcileErr := controller.CreateOrUpdateControlledCloudflared(ctx, mgr.GetClient(), tunnelClient, options.namespace, controller.CloudflaredConfig{
 					Image:             options.cloudflaredImage,
+					ImageResolver:     imageResolver,
 					ImagePullPolicy:   options.cloudflaredImagePullPolicy,
 					Replicas:          options.cloudflaredReplicaCount,
 					Protocol:          options.cloudflaredProtocol,
@@ -249,6 +269,7 @@ func main() {
 	rootCommand.PersistentFlags().StringSliceVar(&options.cloudflaredExtraArgs, "cloudflared-extra-args", options.cloudflaredExtraArgs, "extra arguments to pass to cloudflared")
 	rootCommand.PersistentFlags().StringVar(&options.cloudflaredImage, "cloudflared-image", options.cloudflaredImage, "container image for the managed cloudflared connector")
 	rootCommand.PersistentFlags().StringVar(&options.cloudflaredImagePullPolicy, "cloudflared-image-pull-policy", options.cloudflaredImagePullPolicy, "image pull policy for the managed cloudflared connector")
+	rootCommand.PersistentFlags().StringVar(&options.cloudflaredImageCheckFrequency, "cloudflared-image-check-frequency", options.cloudflaredImageCheckFrequency, "ISO 8601 duration (e.g. PT1H) at which the registry is checked for a newer tag of --cloudflared-image, rolling the connector onto it; empty disables")
 	rootCommand.PersistentFlags().Int32Var(&options.cloudflaredReplicaCount, "cloudflared-replica-count", options.cloudflaredReplicaCount, "replica count for the managed cloudflared connector")
 	rootCommand.PersistentFlags().StringVar(&options.cloudflaredDeploymentConfig, "cloudflared-deployment-config", options.cloudflaredDeploymentConfig, "path to JSON file with cloudflared deployment pod template customization")
 	rootCommand.PersistentFlags().StringVar(&options.clusterDomain, "cluster-domain", options.clusterDomain, "kubernetes cluster domain, used to build service FQDN (should match kubelet --cluster-domain)")
